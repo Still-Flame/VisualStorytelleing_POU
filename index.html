@@ -1,20 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Behind the Moving Dot</title>
-<meta name="description" content="An interactive story about one delivery shift in Bengaluru, built from five interviews.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Behind the Moving Dot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&display=swap">
-<style>
-/* base reset the page relies on */
-html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
-body{margin:0}
-img{max-width:100%}
-[hidden]{display:none!important}
-</style>
 <style>
 /* Layout: a slim bar (about a tenth of the screen) for the scene tracker and the money, and one black frame filling the rest.
    Everything else lives inside the frame: speech bubbles, phone messages, floating figures, a caption that fades in for pivotal moments.
@@ -290,8 +276,6 @@ button{font:inherit;color:inherit}
   .door,.tipnote,.chip,.hbag,.pre,.post,.app::before,.n,.b,.float,.narr,.narr .w,.sb{transition-duration:.01s;transition-delay:0s}
 }
 </style>
-</head>
-<body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
 <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FA9EE"/><stop offset="1" stop-color="#CFEBFF"/></linearGradient>
@@ -303,6 +287,7 @@ button{font:inherit;color:inherit}
     <div class="ticks" id="ticks" role="img" aria-label="Scene progress"></div>
     <div class="right">
       <div class="money" aria-live="polite"><small>Made</small><span class="flap amber" id="money"></span><small id="need"></small></div>
+      <button class="link" id="sound" type="button" aria-pressed="true">Sound on</button>
       <button class="link" id="restart" type="button">Restart</button>
     </div>
   </header>
@@ -442,7 +427,7 @@ function ticks(){
   $('#ticks').innerHTML=h;
   $('#ticks').setAttribute('aria-label',n?('Scene '+n+' of 16'):'Scene progress');
 }
-function setLit(on){app.classList.toggle('lit',on);document.body.classList.toggle('lit',on)}
+function setLit(on){app.classList.toggle('lit',on);document.body.classList.toggle('lit',on);if(window.__snd)window.__snd(on)}
 function next(){go(S.i+1)}
 function go(i){
   cleanup.forEach(function(f){try{f()}catch(e){}});cleanup=[];
@@ -988,6 +973,48 @@ function ride(k,done){
 }
 
 /* ---------- boot ---------- */
+/* ---------- rain and storm sound (made in the browser, no audio file) ---------- */
+var SND={on:true,ctx:null,master:null,timer:0,lit:false};
+window.__sndState=SND;window.__snd=function(on){SND.lit=!!on;sndApply(on?1.5:0.6)};
+function sndNoise(sec){var c=SND.ctx,b=c.createBuffer(2,c.sampleRate*sec,c.sampleRate);
+  for(var ch=0;ch<2;ch++){var d=b.getChannelData(ch),last=0;for(var i=0;i<d.length;i++){var w=Math.random()*2-1;last=(last+0.02*w)/1.02;d[i]=w*0.6+last*3}}
+  return b}
+function sndLevel(){return (SND.on&&!SND.lit)?1:0}
+function sndApply(t){if(!SND.master)return;var c=SND.ctx;SND.master.gain.cancelScheduledValues(c.currentTime);SND.master.gain.setTargetAtTime(sndLevel(),c.currentTime,t||0.4);
+  if(SND.on&&c.state==='suspended')c.resume()}
+function sndThunder(){
+  if(!SND.ctx||!SND.on||SND.lit||document.hidden)return;
+  var c=SND.ctx,t=c.currentTime,src=c.createBufferSource();src.buffer=SND.buf;src.loop=true;
+  var lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(220,t);lp.frequency.exponentialRampToValueAtTime(60,t+5);
+  var g=c.createGain(),peak=1.4+Math.random()*1.2;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+0.12);
+  g.gain.exponentialRampToValueAtTime(peak*0.35,t+0.9);g.gain.exponentialRampToValueAtTime(peak*0.5,t+1.5);g.gain.exponentialRampToValueAtTime(0.0001,t+5.5);
+  src.connect(lp);lp.connect(g);g.connect(SND.master);src.start(t,Math.random()*3);src.stop(t+6);
+}
+function sndLoop(){clearTimeout(SND.timer);SND.timer=setTimeout(function(){sndThunder();sndLoop()},9000+Math.random()*14000)}
+function sndStart(){
+  if(SND.ctx){sndApply();return}
+  var AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+  try{
+    var c=SND.ctx=new AC();SND.buf=sndNoise(4);
+    SND.master=c.createGain();SND.master.gain.value=0;SND.master.connect(c.destination);
+    // rain: bright hiss plus a softer body
+    var a=c.createBufferSource();a.buffer=SND.buf;a.loop=true;
+    var hp=c.createBiquadFilter();hp.type='highpass';hp.frequency.value=1800;
+    var ga=c.createGain();ga.gain.value=0.22;a.connect(hp);hp.connect(ga);ga.connect(SND.master);a.start();
+    var b=c.createBufferSource();b.buffer=SND.buf;b.loop=true;
+    var bp=c.createBiquadFilter();bp.type='bandpass';bp.frequency.value=700;bp.Q.value=0.5;
+    var gb=c.createGain();gb.gain.value=0.28;b.connect(bp);bp.connect(gb);gb.connect(SND.master);b.start(0,1.7);
+    // wind: low noise that swells slowly
+    var w=c.createBufferSource();w.buffer=SND.buf;w.loop=true;
+    var wl=c.createBiquadFilter();wl.type='lowpass';wl.frequency.value=260;
+    var gw=c.createGain();gw.gain.value=0.25;var lfo=c.createOscillator();lfo.frequency.value=0.09;var lg=c.createGain();lg.gain.value=0.15;
+    lfo.connect(lg);lg.connect(gw.gain);lfo.start();w.connect(wl);wl.connect(gw);gw.connect(SND.master);w.start(0,0.9);
+    sndApply(1.2);setTimeout(sndThunder,3500);sndLoop();
+  }catch(e){SND.ctx=null}
+}
+['pointerdown','keydown'].forEach(function(ev){document.addEventListener(ev,function(){if(SND.on)sndStart()},{passive:true})});
+$('#sound').onclick=function(){SND.on=!SND.on;this.textContent=SND.on?'Sound on':'Sound off';this.setAttribute('aria-pressed',SND.on);if(SND.on)sndStart();else sndApply(0.15)};
+
 function boot(data){
   if(data&&typeof data.i==='number'&&data.i>0&&data.i<FLOW.length){S.money=data.money||0;S.results=data.results||{};go(data.i)}else go(0);
 }
@@ -996,5 +1023,4 @@ try{if(hot&&hot.snapshot)hot.snapshot(function(){return {i:S.i,money:S.money,res
 if(hot&&hot.ready)hot.ready(boot);else boot((hot&&hot.data)||{});
 })();
 </script>
-</body>
-</html>
+</body></html>
